@@ -12,6 +12,12 @@ CREATE TABLE subject_areas (
   name text UNIQUE NOT NULL
 );
 
+CREATE TABLE quarter_subject_areas (
+  quarter_code text REFERENCES quarters(code),
+  subject_area_code text REFERENCES subject_areas(code),
+  PRIMARY KEY (quarter_code, subject_area_code)
+);
+
 CREATE TYPE node_type AS ENUM (
   'value', 'switch'
 );
