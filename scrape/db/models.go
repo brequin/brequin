@@ -10,6 +10,25 @@ type SubjectArea struct {
 	Name string
 }
 
+type NodeType string
+
+const (
+	NodeTypeValue  NodeType = "value"
+	NodeTypeSwitch NodeType = "switch"
+)
+
+type Node struct {
+	Id   string
+	Type NodeType
+}
+
+type Course struct {
+	NodeId            string
+	SubjectAreaCode   string
+	CourseNumber      string
+	CourseDescription *string
+}
+
 type Grade string
 
 const (
@@ -27,3 +46,12 @@ const (
 	GradeDMinus Grade = "D-"
 	GradeF      Grade = "F"
 )
+
+type Relation struct {
+	SourceId     string
+	TargetId     string
+	Enforced     *bool
+	Prereq       *bool
+	Coreq        *bool
+	MinimumGrade *Grade
+}

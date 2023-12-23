@@ -6,13 +6,13 @@ import (
 	"strings"
 )
 
-const listQuarters = `SELECT code, name FROM quarters ORDER BY code`
+const listQuarters = `SELECT code, name FROM quarters ORDER BY quarter_rank(code)`
 const insertQuarters = `INSERT INTO quarters (code, name) VALUES`
 
 const listSubjectAreas = `SELECT code, name FROM subject_areas ORDER BY code`
 const insertSubjectAreas = `INSERT INTO subject_areas (code, name) VALUES`
 
-const listQuarterSubjectAreas = `SELECT subject_areas.code, subject_areas.name FROM quarter_subject_areas JOIN subject_areas ON quarter_subject_areas.subject_area_code = subject_areas.code WHERE quarter_code = '$1' ORDER BY subject_areas.code`
+const listQuarterSubjectAreas = `SELECT subject_areas.code, subject_areas.name FROM quarter_subject_areas JOIN subject_areas ON quarter_subject_areas.subject_area_code = subject_areas.code WHERE quarter_code = $1 ORDER BY subject_areas.code`
 const insertQuarterSubjectAreas = `INSERT INTO quarter_subject_areas (quarter_code, subject_area_code) VALUES`
 
 const conflictDoNothing = `ON CONFLICT DO NOTHING`
@@ -42,6 +42,10 @@ func (d *Database) ListQuarters() ([]Quarter, error) {
 }
 
 func (d *Database) InsertQuarters(quarters []Quarter) error {
+	if len(quarters) == 0 {
+		return nil
+	}
+
 	var b strings.Builder
 	separator := ""
 	for _, quarter := range quarters {
@@ -82,6 +86,10 @@ func (d *Database) ListSubjectAreas() ([]SubjectArea, error) {
 }
 
 func (d *Database) InsertSubjectAreas(subjectAreas []SubjectArea) error {
+	if len(subjectAreas) == 0 {
+		return nil
+	}
+
 	var b strings.Builder
 	separator := ""
 	for _, subjectArea := range subjectAreas {
@@ -122,6 +130,10 @@ func (d *Database) ListQuarterSubjectAreas(quarter Quarter) ([]SubjectArea, erro
 }
 
 func (d *Database) InsertQuarterSubjectAreas(quarter Quarter, subjectAreas []SubjectArea) error {
+	if len(subjectAreas) == 0 {
+		return nil
+	}
+
 	var b strings.Builder
 	separator := ""
 	for _, subjectArea := range subjectAreas {

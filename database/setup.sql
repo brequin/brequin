@@ -30,9 +30,9 @@ CREATE TABLE nodes (
 CREATE TABLE courses (
   node_id text UNIQUE NOT NULL REFERENCES nodes(id),
   subject_area_code text REFERENCES subject_areas(code),
-  course_number text,
+  course_catalog_number text,
   course_description text,
-  PRIMARY KEY (subject_area_code, course_number)
+  PRIMARY KEY (subject_area_code, course_catalog_number)
 );
 
 CREATE TYPE grade AS ENUM (
@@ -48,3 +48,17 @@ CREATE TABLE relations (
   minimum_grade grade,
   PRIMARY KEY (source_id, target_id)
 );
+
+CREATE FUNCTION quarter_rank(code text) RETURNS text AS $$
+  DECLARE
+    year text := LEFT(code, 2);
+  BEGIN
+    CASE RIGHT(code, 1)
+      WHEN 'W' THEN RETURN year || '0';
+      WHEN 'S' THEN RETURN year || '1';
+      WHEN '1' THEN RETURN year || '2';
+      WHEN '2' THEN RETURN year || '3';
+      WHEN 'F' THEN RETURN year || '4';
+    END CASE;
+  END;
+$$ LANGUAGE plpgsql;
