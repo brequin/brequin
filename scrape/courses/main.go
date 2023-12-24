@@ -50,27 +50,28 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 		var nodes []db.Node
 		var courses []db.Course
 		var relations []db.Relation
-		var nodesCoursesRelationsMutex sync.Mutex
+		var nodesMutex sync.Mutex
+		var coursesMutex sync.Mutex
+		var relationsMutex sync.Mutex
 	*/
 
-	courseInfoDivs := document.Find("div.class-not-checked.class-info")
+	classInfoDivs := document.Find("div.class-not-checked.class-info")
 	var wg sync.WaitGroup
-	for _, courseInfoDivNode := range courseInfoDivs.Nodes {
+	for _, courseInfoDivNode := range classInfoDivs.Nodes {
 		wg.Add(1)
 
 		go func(root *html.Node) {
 			defer wg.Done()
 
-			courseInfoDiv := goquery.NewDocumentFromNode(root)
+			classInfoDiv := goquery.NewDocumentFromNode(root)
 
-			fakeCourseId, exists := courseInfoDiv.Attr("id")
+			fakeClassId, exists := classInfoDiv.Attr("id")
 			if !exists {
-				log.Print("Unable to determine fake course id")
+				log.Print("Unable to determine fake class id")
 				return
 			}
 
-			courseLabel := courseInfoDiv.Find("div#" + fakeCourseId + "-enroll").Find("label")
-			label, err := courseLabel.Html()
+			label, err := classInfoDiv.Find("div#" + fakeClassId + "-enroll").Find("label").Html()
 			if err != nil {
 				log.Print("Unable to determine course label")
 				return
@@ -84,18 +85,29 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 			before, after, found := strings.Cut(label, " - ")
 			if !found {
 				log.Print("Unable to determine course catalog number and name")
+				return
 			}
 
 			prefix := fmt.Sprintf("Select %v (%v) ", subjectArea.Name, subjectArea.Code)
 			catalogNumber, found := strings.CutPrefix(before, prefix)
 			if !found {
 				log.Print("Unable to determine course catalog number")
+				return
 			}
 
 			split := strings.Split(after, " ")
 			name := strings.Join(split[:len(split)-2], " ")
 
 			fmt.Println(subjectArea.Code, catalogNumber, name)
+
+			classDetailPath, exists := classInfoDiv.Find("div#" + fakeClassId + "-section").Find("a").Attr("href")
+			if !exists {
+				log.Print("Unable to determine class detail path")
+				return
+			}
+
+			classDetailTooltipUrl := strings.Replace("https://sa.ucla.edu"+classDetailPath, "ClassDetail", "ClassDetailTooltip", 1)
+			fmt.Println(classDetailTooltipUrl)
 		}(courseInfoDivNode)
 	}
 	wg.Wait()
@@ -142,7 +154,7 @@ func foo() {
 					log.Print(err)
 					return
 				}
-				fmt.Print(nodes, courses, relations)
+				fmt.Print(len(nodes), len(courses), len(relations))
 				/*
 					if err := database.InsertNodes(nodes); err != nil {
 						log.Fatal(err)
