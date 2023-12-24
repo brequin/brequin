@@ -52,13 +52,11 @@ func ScrapeSubjectAreas(quarterCode string) ([]db.SubjectArea, error) {
 	}
 
 	query := request.URL.Query()
-	// Query parameters must be added in this order
 	query.Add("term_cd", quarterCode)
 	query.Add("search_type", "subject")
 	request.URL.RawQuery = query.Encode()
 
 	// Required
-	// https://stackoverflow.com/questions/17478731/whats-the-point-of-the-x-requested-with-header
 	request.Header.Add("X-Requested-With", "XMLHttpRequest")
 
 	response, err := http.DefaultClient.Do(request)

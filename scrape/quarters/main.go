@@ -25,15 +25,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	quarterOptions := document.Find("select#optSelectTerm")
-	codes := quarterOptions.Find("option").Map(func(i int, option *goquery.Selection) string {
+	quarterOptions := document.Find("select#optSelectTerm").Find("option")
+	codes := quarterOptions.Map(func(i int, option *goquery.Selection) string {
 		code, exists := option.Attr("value")
 		if !exists {
 			log.Fatal("Unable to determine quarter code")
 		}
 		return code
 	})
-	names := quarterOptions.Find("option").Map(func(i int, option *goquery.Selection) string {
+	names := quarterOptions.Map(func(i int, option *goquery.Selection) string {
 		name, err := option.Html()
 		if err != nil {
 			log.Fatal(err)

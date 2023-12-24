@@ -23,29 +23,17 @@ type Node struct {
 }
 
 type Course struct {
-	NodeId            string
-	SubjectAreaCode   string
-	CourseNumber      string
-	CourseDescription *string
+	SubjectAreaCode string
+	CatalogNumber   string
+	Name            string
+	NodeId          string
 }
 
-type Grade string
-
-const (
-	GradeAPlus  Grade = "A+"
-	GradeA      Grade = "A"
-	GradeAMinus Grade = "A-"
-	GradeBPlus  Grade = "B+"
-	GradeB      Grade = "B"
-	GradeBMinus Grade = "B-"
-	GradeCPlus  Grade = "C+"
-	GradeC      Grade = "C"
-	GradeCMinus Grade = "C-"
-	GradeDPlus  Grade = "D+"
-	GradeD      Grade = "D"
-	GradeDMinus Grade = "D-"
-	GradeF      Grade = "F"
-)
+type CourseDescription struct {
+	SubjectAreaCode string
+	CatalogNumber   string
+	Description     string
+}
 
 type Relation struct {
 	SourceId     string
@@ -53,5 +41,5 @@ type Relation struct {
 	Enforced     *bool
 	Prereq       *bool
 	Coreq        *bool
-	MinimumGrade *Grade
+	MinimumGrade *string
 }

@@ -28,15 +28,18 @@ CREATE TABLE nodes (
 );
 
 CREATE TABLE courses (
-  node_id text UNIQUE NOT NULL REFERENCES nodes(id),
   subject_area_code text REFERENCES subject_areas(code),
-  course_catalog_number text,
-  course_description text,
-  PRIMARY KEY (subject_area_code, course_catalog_number)
+  catalog_number text,
+  name text NOT NULL,
+  node_id text UNIQUE NOT NULL REFERENCES nodes(id),
+  PRIMARY KEY (subject_area_code, catalog_number)
 );
 
-CREATE TYPE grade AS ENUM (
-  'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'
+CREATE TABLE course_descriptions (
+  subject_area_code text REFERENCES subject_areas(code),
+  catalog_number text,
+  description text NOT NULL,
+  PRIMARY KEY (subject_area_code, catalog_number)
 );
 
 CREATE TABLE relations (
@@ -45,7 +48,7 @@ CREATE TABLE relations (
   enforced boolean,
   prereq boolean,
   coreq boolean,
-  minimum_grade grade,
+  minimum_grade text,
   PRIMARY KEY (source_id, target_id)
 );
 
