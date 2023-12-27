@@ -13,8 +13,9 @@ type SubjectArea struct {
 type NodeType string
 
 const (
-	NodeTypeValue  NodeType = "value"
-	NodeTypeSwitch NodeType = "switch"
+	NodeTypeValue NodeType = "value"
+	NodeTypeAnd   NodeType = "and"
+	NodeTypeOr    NodeType = "or"
 )
 
 type Node struct {
