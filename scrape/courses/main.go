@@ -18,136 +18,14 @@ import (
 const courseSummaryUrl = "https://sa.ucla.edu/ro/public/soc/Results/GetCourseSummary"
 
 // Path is required filler
-const modelTemplate = `{"Term":"%v","SubjectAreaCode":"%v","IsRoot":true,"Path":"0"}`
-
-type Requisite struct {
-	NodeId       string
-	Enforced     bool
-	Prereq       bool
-	Coreq        bool
-	MinimumGrade string
-}
+const modelTemplate = `{"Term":"%v","SubjectAreaCode":"%v","CatalogNumber":"%v","IsRoot":true,"Path":"0"}`
 
 var subjectAreaNameCodeMap map[string]string
 
-func ScrapeClassDetailTooltip(course db.Course, classDetailTooltipUrl string) ([]db.Node, []db.Course, []db.Relation, error) {
-	request, err := http.NewRequest("GET", classDetailTooltipUrl, nil)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	// Required
-	request.Header.Add("X-Requested-With", "XMLHttpRequest")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer response.Body.Close()
-
-	document, err := goquery.NewDocumentFromReader(response.Body)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-
-	//var requisites []Requisite
-	var reqExpBuilder strings.Builder
-
-	requisiteRows := document.Find("table.requisites_content").Find("tbody").Find("tr.requisite")
-	for _, root := range requisiteRows.Nodes {
-		requisiteRow := goquery.NewDocumentFromNode(root)
-
-		requisiteDataNodes := requisiteRow.Find("td").Nodes
-
-		expPart, err := goquery.NewDocumentFromNode(requisiteDataNodes[0]).Html()
-		if err != nil {
-			fmt.Print("Unable to determine requisite expression")
-			return nil, nil, nil, err
-		}
-		/*
-			minimumGrade, err := goquery.NewDocumentFromNode(requisiteDataNodes[1]).Html()
-			if err != nil {
-				fmt.Print("Unable to determine requisite minimum grade")
-				return nil, nil, nil, err
-			}
-			prereqText, err := goquery.NewDocumentFromNode(requisiteDataNodes[2]).Html()
-			if err != nil {
-				log.Print("Unable to determine whether requisite is a prerequisite")
-				return nil, nil, nil, err
-			}
-			coreqText, err := goquery.NewDocumentFromNode(requisiteDataNodes[3]).Html()
-			if err != nil {
-				log.Print("Unable to determine whether requisite is a corequisite")
-				return nil, nil, nil, err
-			}
-		*/
-
-		//enforced := goquery.NewDocumentFromNode(requisiteDataNodes[4]).Find("div.icon-exclamation-sign").Length() == 1
-		//prereq := prereqText == "Yes"
-		//coreq := coreqText == "Yes"
-
-		beforeAnd, foundAnd := strings.CutSuffix(expPart, " and")
-		if foundAnd {
-			expPart = beforeAnd
-		}
-		beforeOr, foundOr := strings.CutSuffix(expPart, " or")
-		if foundOr {
-			expPart = beforeOr
-		}
-
-		// This works for non-course requisites such as diagnostic tests
-		requisiteId := strings.Trim(expPart, "( )")
-
-		splitId := strings.Split(requisiteId, " ")
-		catalogNumber := splitId[len(splitId)-1]
-		subjectAreaName := strings.Trim(strings.TrimSuffix(requisiteId, catalogNumber), " ")
-		subjectAreaCode, okay := subjectAreaNameCodeMap[subjectAreaName]
-		if okay {
-			requisiteId = db.ValueNodeId(subjectAreaCode, catalogNumber)
-			expPart = strings.Replace(expPart, subjectAreaName+" "+catalogNumber, requisiteId, 1)
-		}
-
-		expPart = strings.ReplaceAll(expPart, " ", "")
-		fmt.Fprint(&reqExpBuilder, expPart)
-		if foundAnd {
-			fmt.Fprint(&reqExpBuilder, "&&")
-		}
-		if foundOr {
-			fmt.Fprint(&reqExpBuilder, "||")
-		}
-	}
-	fmt.Printf("%v: %v\n", course.CatalogNumber, reqExpBuilder.String())
-
-	return nodes, courses, relations, nil
-}
-
 func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea) ([]db.Node, []db.Course, []db.Relation, error) {
-	request, err := http.NewRequest("GET", courseSummaryUrl, nil)
+	catalogNumbers, err := ScrapeCourseCatalogNumbers(quarter.Code, subjectArea.Code)
 	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	model := fmt.Sprintf(modelTemplate, quarter.Code, subjectArea.Code)
-
-	query := request.URL.Query()
-	query.Add("model", model)
-	query.Add("filterFlags", "{}")
-	request.URL.RawQuery = query.Encode()
-
-	fmt.Println(request.URL.RawQuery)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer response.Body.Close()
-
-	document, err := goquery.NewDocumentFromReader(response.Body)
-	if err != nil {
+		log.Println("Unable to determine course catalog numbers")
 		return nil, nil, nil, err
 	}
 
@@ -158,47 +36,66 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 	var coursesMutex sync.Mutex
 	var relationsMutex sync.Mutex
 
-	classInfoDivs := document.Find("div.class-not-checked.class-info")
 	var wg sync.WaitGroup
-	for _, classInfoDivNode := range classInfoDivs.Nodes {
+	for _, catalogNumber := range catalogNumbers {
 		wg.Add(1)
 
-		go func(root *html.Node) {
+		go func(n string) {
 			defer wg.Done()
 
-			classInfoDiv := goquery.NewDocumentFromNode(root)
+			request, err := http.NewRequest("GET", courseSummaryUrl, nil)
+			if err != nil {
+				log.Println("Unable to make new course summary request")
+				return
+			}
+
+			formattedCatalogNumber, err := FormatCatalogNumber(n)
+			if err != nil {
+				log.Printf("Unable to format course catalog number: %v\n", n)
+				return
+			}
+			model := fmt.Sprintf(modelTemplate, quarter.Code, subjectArea.Code, formattedCatalogNumber)
+
+			query := request.URL.Query()
+			query.Add("model", model)
+			query.Add("filterFlags", "{}")
+			request.URL.RawQuery = query.Encode()
+
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				log.Println("Unable to get course summary")
+				return
+			}
+			defer response.Body.Close()
+
+			document, err := goquery.NewDocumentFromReader(response.Body)
+			if err != nil {
+				log.Println("Unable to make document from course summary")
+				return
+			}
+
+			classInfoDiv := document.Find("div.class-not-checked.class-info").First()
 
 			fakeClassId, exists := classInfoDiv.Attr("id")
 			if !exists {
-				log.Print("Unable to determine fake class id")
+				log.Printf("Unable to determine fake class id for class: %v %v\n", subjectArea.Code, n)
 				return
 			}
 
 			label, err := classInfoDiv.Find("div#" + fakeClassId + "-enroll").Find("label").Html()
 			if err != nil {
-				log.Print("Unable to determine course label")
+				log.Println("Unable to determine course label")
 				return
 			}
+			label = html.UnescapeString(label)
 
-			// Skip all but first section
-			if !strings.HasSuffix(label, " 1") {
-				return
-			}
-
-			before, after, found := strings.Cut(label, " - ")
+			_, after, found := strings.Cut(label, n+" - ")
 			if !found {
-				log.Print("Unable to determine course catalog number and name")
+				log.Println("Unable to determine course name")
 				return
 			}
 
-			prefix := fmt.Sprintf("Select %v (%v) ", subjectArea.Name, subjectArea.Code)
-			catalogNumber, found := strings.CutPrefix(before, prefix)
-			if !found {
-				log.Print("Unable to determine course catalog number")
-				return
-			}
-
-			nodeId := db.ValueNodeId(subjectArea.Code, catalogNumber)
+			nodeId := db.ValueNodeId(subjectArea.Code, n)
 			nodesMutex.Lock()
 			nodes = append(nodes, db.Node{Id: nodeId, Type: "value"})
 			nodesMutex.Unlock()
@@ -206,21 +103,28 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 			split := strings.Split(after, " ")
 			name := strings.Join(split[:len(split)-2], " ")
 
-			course := db.Course{SubjectAreaCode: subjectArea.Code, CatalogNumber: catalogNumber, Name: name, NodeId: nodeId}
+			course := db.Course{SubjectAreaCode: subjectArea.Code, CatalogNumber: n, Name: name, NodeId: nodeId}
 			coursesMutex.Lock()
 			courses = append(courses, course)
 			coursesMutex.Unlock()
 
 			classDetailPath, exists := classInfoDiv.Find("div#" + fakeClassId + "-section").Find("a").Attr("href")
 			if !exists {
-				log.Print("Unable to determine class detail path")
+				log.Println("Unable to determine class detail path")
 				return
 			}
 
 			classDetailTooltipUrl := strings.Replace("https://sa.ucla.edu"+classDetailPath, "ClassDetail", "ClassDetailTooltip", 1)
-			tooltipNodes, tooltipCourses, tooltipRelations, err := ScrapeClassDetailTooltip(course, classDetailTooltipUrl)
+			requisiteExpression, err := ScrapeRequisiteExpression(classDetailTooltipUrl)
 			if err != nil {
-				log.Print("Unable to scrape class detail tooltip")
+				log.Println("Unable to determine requisite expression from class detail tooltip")
+				return
+			}
+
+			fmt.Println(requisiteExpression)
+			tooltipNodes, tooltipCourses, tooltipRelations, err := ParseRequisites(course, requisiteExpression)
+			if err != nil {
+				log.Println("Unable to parse requisite expression")
 				return
 			}
 
@@ -235,7 +139,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 			relationsMutex.Lock()
 			relations = append(relations, tooltipRelations...)
 			relationsMutex.Unlock()
-		}(classInfoDivNode)
+		}(catalogNumber)
 	}
 	wg.Wait()
 
@@ -260,7 +164,7 @@ func main() {
 		subjectAreaNameCodeMap[subjectArea.Name] = subjectArea.Code
 	}
 
-	nodes, courses, relations, err := ScrapeNodesCoursesRelations(db.Quarter{Code: "24W", Name: "Winter 2024"}, db.SubjectArea{Code: "MATH", Name: "Mathematics"})
+	nodes, courses, relations, err := ScrapeNodesCoursesRelations(db.Quarter{Code: "24W", Name: "Winter 2024"}, db.SubjectArea{Code: "EC ENGR", Name: "Electrical and Computer Engineering"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -305,7 +209,7 @@ func foo() {
 
 				nodes, courses, relations, err := ScrapeNodesCoursesRelations(quarter, s)
 				if err != nil {
-					log.Print(err)
+					log.Println(err)
 					return
 				}
 				fmt.Print(len(nodes), len(courses), len(relations))
