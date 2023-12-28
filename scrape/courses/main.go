@@ -97,7 +97,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 
 			nodeId := db.ValueNodeId(subjectArea.Code, n)
 			nodesMutex.Lock()
-			nodes = append(nodes, db.Node{Id: nodeId, Type: "value"})
+			nodes = append(nodes, db.Node{Id: nodeId, Type: db.NodeTypeValue})
 			nodesMutex.Unlock()
 
 			split := strings.Split(after, " ")
@@ -121,8 +121,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 				return
 			}
 
-			fmt.Println(requisiteExpression)
-			tooltipNodes, tooltipCourses, tooltipRelations, err := ParseRequisites(course, requisiteExpression)
+			tooltipNodes, tooltipCourses, tooltipRelations, err := requisiteExpression.EvaluateFor(course)
 			if err != nil {
 				log.Println("Unable to parse requisite expression")
 				return
