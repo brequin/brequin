@@ -33,6 +33,8 @@ type CourseDetails struct {
 	SubjectAreaCode string
 	CatalogNumber   string
 	Name            string
+	Units           string
+	Level           string
 	Description     string
 }
 

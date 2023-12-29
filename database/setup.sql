@@ -37,6 +37,8 @@ CREATE TABLE course_details (
   subject_area_code text REFERENCES subject_areas(code),
   catalog_number text,
   name text NOT NULL,
+  units text NOT NULL,
+  level text NOT NULL,
   description text NOT NULL,
   PRIMARY KEY (subject_area_code, catalog_number)
 );
