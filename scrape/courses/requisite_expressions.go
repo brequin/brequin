@@ -103,14 +103,14 @@ func Eat(tokens *[]Token, tokenType TokenType) (string, error) {
 }
 
 func Start(course db.Course, tokens *[]Token) (nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
-	expressionId, _, nodes, courses, relations, err := Expression(tokens)
+	_, expression, nodes, courses, relations, err := Expression(tokens)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	Eat(tokens, TokenEnd)
 
-	relation := db.Relation{SourceId: course.NodeId, TargetId: expressionId}
+	relation := db.Relation{SourceId: course.NodeId, TargetId: expression.Id}
 	relations = append(relations, relation)
 
 	return nodes, courses, relations, nil
@@ -139,7 +139,7 @@ func Expression(tokens *[]Token) (id string, expression ParseNode, nodes []db.No
 	case 0:
 		return "", ParseNode{}, nil, nil, nil, errors.New("Expression has no terms")
 	case 1:
-		id = headTerm.Id
+		id = termId
 		expression = headTerm
 	default:
 		id = termId + termsId
@@ -177,7 +177,7 @@ func Term(tokens *[]Token) (id string, term ParseNode, nodes []db.Node, courses 
 	case 0:
 		return "", ParseNode{}, nil, nil, nil, errors.New("Term has no factors")
 	case 1:
-		id = headFactor.Id
+		id = factorId
 		term = headFactor
 	default:
 		id = factorId + factorsId
@@ -242,7 +242,7 @@ func Factor(tokens *[]Token) (id string, factor ParseNode, nodes []db.Node, cour
 
 		factorNode := db.Node{Id: nodeId, Type: db.NodeTypeValue}
 		factor = ParseNode{Node: &factorNode, Enforced: &isEnforced, Prereq: &isPrereq, Coreq: &isCoreq, MinimumGrade: &minimumGrade}
-		id = nodeId
+		id = requisiteIdFlags // Flags necessary for eliminating duplicate edges of different types
 		nodes = append(nodes, factorNode)
 
 		if isCourse {
@@ -261,8 +261,7 @@ func Factor(tokens *[]Token) (id string, factor ParseNode, nodes []db.Node, cour
 			return "", ParseNode{}, nil, nil, nil, err
 		}
 
-		_, err = Eat(tokens, TokenRParen)
-		if err != nil {
+		if _, err := Eat(tokens, TokenRParen); err != nil {
 			return "", ParseNode{}, nil, nil, nil, err
 		}
 
