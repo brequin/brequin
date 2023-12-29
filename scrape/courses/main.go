@@ -107,7 +107,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 
 			tooltipNodes, tooltipCourses, tooltipRelations, err := requisiteExpression.EvaluateForCourse(course)
 			if err != nil {
-				log.Println("Unable to parse requisite expression")
+				log.Println("Unable to parse requisite expression: " + requisiteExpression.string)
 				return
 			}
 

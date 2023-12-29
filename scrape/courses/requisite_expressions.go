@@ -16,6 +16,14 @@ type RequisiteExpression struct {
 	string
 }
 
+type ParseNode struct {
+	*db.Node
+	Enforced     *bool
+	Prereq       *bool
+	Coreq        *bool
+	MinimumGrade *string
+}
+
 type TokenType int
 
 const (
@@ -94,99 +102,153 @@ func Eat(tokens *[]Token, tokenType TokenType) (string, error) {
 	return token.Value, nil
 }
 
-func Start(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-
-	Expression(tokens)
-	Eat(tokens, TokenEnd)
-
-	return id, nodes, courses, relations, nil
-}
-
-func Expression(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-
-	Term(tokens)
-	Terms(tokens)
-
-	return id, nodes, courses, relations, nil
-}
-
-func Term(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-	/*
-		factorId, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
-
-		factorsId, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
-
-		id = factorId + factorsId
-		termNode := db.Node{Id: id, Type: db.NodeTypeAnd}
-		nodes = append(nodes, factorNodes...)
-		nodes = append(nodes, factorsNodes...)
-
-		for _, node := range nodes {
-		}
-
-		nodes = append(nodes, termNode)
-	*/
-	return id, nodes, courses, relations, nil
-}
-
-func Terms(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-
-	if (*tokens)[0].Type == TokenOr {
-		Eat(tokens, TokenOr)
-		Term(tokens)
-		Terms(tokens)
+func Start(course db.Course, tokens *[]Token) (nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
+	expressionId, _, nodes, courses, relations, err := Expression(tokens)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
-	return id, nodes, courses, relations, nil
+	Eat(tokens, TokenEnd)
+
+	relation := db.Relation{SourceId: course.NodeId, TargetId: expressionId}
+	relations = append(relations, relation)
+
+	return nodes, courses, relations, nil
 }
 
-func Factor(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
+func Expression(tokens *[]Token) (id string, expression ParseNode, nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
+	termId, headTerm, termNodes, termCourses, termRelations, err := Term(tokens)
+	if err != nil {
+		return "", ParseNode{}, nil, nil, nil, err
+	}
 
+	termsId, tailTerms, termsNodes, termsCourses, termsRelations, err := Terms(tokens)
+	if err != nil {
+		return "", ParseNode{}, nil, nil, nil, err
+	}
+
+	nodes = append(nodes, termNodes...)
+	nodes = append(nodes, termsNodes...)
+	courses = append(courses, termCourses...)
+	courses = append(courses, termsCourses...)
+	relations = append(relations, termRelations...)
+	relations = append(relations, termsRelations...)
+
+	terms := append(tailTerms, headTerm)
+	switch len(terms) {
+	case 0:
+		return "", ParseNode{}, nil, nil, nil, errors.New("Expression has no terms")
+	case 1:
+		id = headTerm.Id
+		expression = headTerm
+	default:
+		id = termId + termsId
+		expressionNode := db.Node{Id: id, Type: db.NodeTypeOr}
+		expression = ParseNode{Node: &expressionNode}
+		for _, term := range append(tailTerms, headTerm) {
+			relation := db.Relation{SourceId: expression.Id, TargetId: term.Id, Enforced: term.Enforced, Prereq: term.Prereq, Coreq: term.Coreq, MinimumGrade: term.MinimumGrade}
+			relations = append(relations, relation)
+		}
+		nodes = append(nodes, expressionNode)
+	}
+	return id, expression, nodes, courses, relations, nil
+}
+
+func Term(tokens *[]Token) (id string, term ParseNode, nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
+	factorId, headFactor, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
+	if err != nil {
+		return "", ParseNode{}, nil, nil, nil, err
+	}
+
+	factorsId, tailFactors, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
+	if err != nil {
+		return "", ParseNode{}, nil, nil, nil, err
+	}
+
+	nodes = append(nodes, factorNodes...)
+	nodes = append(nodes, factorsNodes...)
+	courses = append(courses, factorCourses...)
+	courses = append(courses, factorsCourses...)
+	relations = append(relations, factorRelations...)
+	relations = append(relations, factorsRelations...)
+
+	factors := append(tailFactors, headFactor)
+	switch len(factors) {
+	case 0:
+		return "", ParseNode{}, nil, nil, nil, errors.New("Term has no factors")
+	case 1:
+		id = headFactor.Id
+		term = headFactor
+	default:
+		id = factorId + factorsId
+		termNode := db.Node{Id: id, Type: db.NodeTypeAnd}
+		term = ParseNode{Node: &termNode}
+		for _, factor := range append(tailFactors, headFactor) {
+			relation := db.Relation{SourceId: termNode.Id, TargetId: factor.Id, Enforced: factor.Enforced, Prereq: factor.Prereq, Coreq: factor.Coreq, MinimumGrade: factor.MinimumGrade}
+			relations = append(relations, relation)
+		}
+		nodes = append(nodes, termNode)
+	}
+
+	return id, term, nodes, courses, relations, nil
+}
+
+func Terms(tokens *[]Token) (id string, terms []ParseNode, nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
+	if (*tokens)[0].Type == TokenOr {
+		Eat(tokens, TokenOr)
+
+		termId, headTerm, termNodes, termCourses, termRelations, err := Term(tokens)
+		if err != nil {
+			return "", nil, nil, nil, nil, err
+		}
+
+		termsId, tailTerms, termsNodes, termsCourses, termsRelations, err := Terms(tokens)
+		if err != nil {
+			return "", nil, nil, nil, nil, err
+		}
+
+		terms = append(tailTerms, headTerm)
+		id = "|" + termId + termsId
+		nodes = append(nodes, termNodes...)
+		nodes = append(nodes, termsNodes...)
+		courses = append(courses, termCourses...)
+		courses = append(courses, termsCourses...)
+		relations = append(relations, termRelations...)
+		relations = append(relations, termsRelations...)
+	}
+
+	return id, terms, nodes, courses, relations, nil
+}
+
+func Factor(tokens *[]Token) (id string, factor ParseNode, nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
 	switch (*tokens)[0].Type {
 	case TokenRequisite:
 		requisiteIdFlags, err := Eat(tokens, TokenRequisite)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return "", ParseNode{}, nil, nil, nil, err
 		}
 
 		nodeId, flags, found := strings.Cut(requisiteIdFlags, "{")
 		if !found {
-			return "", nil, nil, nil, errors.New("Unable to determine requisite node id and flags")
+			return "", ParseNode{}, nil, nil, nil, errors.New("Unable to determine requisite node id and flags")
 		}
+		flags = flags[:len(flags)-1]
 
+		isCourse := db.Unflag(flags[0])
+		isEnforced := db.Unflag(flags[1])
+		isPrereq := db.Unflag(flags[2])
+		isCoreq := db.Unflag(flags[3])
+		minimumGrade := flags[4:]
+
+		factorNode := db.Node{Id: nodeId, Type: db.NodeTypeValue}
+		factor = ParseNode{Node: &factorNode, Enforced: &isEnforced, Prereq: &isPrereq, Coreq: &isCoreq, MinimumGrade: &minimumGrade}
 		id = nodeId
-		nodes = append(nodes, db.Node{Id: nodeId, Type: db.NodeTypeValue})
+		nodes = append(nodes, factorNode)
 
-		if db.Unflag(flags[0]) { // Requisite is a course
+		if isCourse {
 			subjectAreaPart, catalogNumber, found := strings.Cut(nodeId, "#")
 			if !found {
-				return "", nil, nil, nil, errors.New("Unable to determine requisite subject area and course catalog number")
+				return "", ParseNode{}, nil, nil, nil, errors.New("Unable to determine requisite subject area and course catalog number")
 			}
 			course := db.Course{SubjectAreaCode: subjectAreaIdCodeMap[subjectAreaPart], CatalogNumber: catalogNumber, NodeId: nodeId}
 			courses = append(courses, course)
@@ -194,44 +256,43 @@ func Factor(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, err
 	case TokenLParen:
 		Eat(tokens, TokenLParen)
 
-		expressionId, expressionNodes, expressionCourses, expressionRelations, err := Expression(tokens)
+		expressionId, expression, expressionNodes, expressionCourses, expressionRelations, err := Expression(tokens)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return "", ParseNode{}, nil, nil, nil, err
 		}
 
+		_, err = Eat(tokens, TokenRParen)
+		if err != nil {
+			return "", ParseNode{}, nil, nil, nil, err
+		}
+
+		factor = expression
 		id = "(" + expressionId + ")" // Parentheses necessary for conjunction in term
 		nodes = append(nodes, expressionNodes...)
 		courses = append(courses, expressionCourses...)
 		relations = append(relations, expressionRelations...)
-
-		_, err = Eat(tokens, TokenRParen)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
+	default:
+		return "", ParseNode{}, nil, nil, nil, errors.New("Invalid token")
 	}
 
-	return id, nodes, courses, relations, nil
+	return id, factor, nodes, courses, relations, nil
 }
 
-func Factors(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
-	var id string
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
-
+func Factors(tokens *[]Token) (id string, factors []ParseNode, nodes []db.Node, courses []db.Course, relations []db.Relation, err error) {
 	if (*tokens)[0].Type == TokenAnd {
 		Eat(tokens, TokenAnd)
 
-		factorId, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
+		factorId, headFactor, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return "", nil, nil, nil, nil, err
 		}
 
-		factorsId, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
+		factorsId, tailFactors, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return "", nil, nil, nil, nil, err
 		}
 
+		factors = append(tailFactors, headFactor)
 		id = "&" + factorId + factorsId
 		nodes = append(nodes, factorNodes...)
 		nodes = append(nodes, factorsNodes...)
@@ -241,16 +302,19 @@ func Factors(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, er
 		relations = append(relations, factorsRelations...)
 	}
 
-	return id, nodes, courses, relations, nil
+	return id, factors, nodes, courses, relations, nil
 }
 
 func (requisiteExpression RequisiteExpression) EvaluateForCourse(course db.Course) ([]db.Node, []db.Course, []db.Relation, error) {
-	tokens := requisiteExpression.Tokenize()
-	Start(tokens)
+	if len(requisiteExpression.string) == 0 {
+		return nil, nil, nil, nil
+	}
 
-	var nodes []db.Node
-	var courses []db.Course
-	var relations []db.Relation
+	tokens := requisiteExpression.Tokenize()
+	nodes, courses, relations, err := Start(course, tokens)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	return nodes, courses, relations, nil
 }
