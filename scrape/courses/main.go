@@ -12,7 +12,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/brequin/brequin/scrape/db"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/net/html"
 )
 
 const courseSummaryUrl = "https://sa.ucla.edu/ro/public/soc/Results/GetCourseSummary"
@@ -21,6 +20,7 @@ const courseSummaryUrl = "https://sa.ucla.edu/ro/public/soc/Results/GetCourseSum
 const modelTemplate = `{"Term":"%v","SubjectAreaCode":"%v","CatalogNumber":"%v","IsRoot":true,"Path":"0"}`
 
 var subjectAreaNameCodeMap map[string]string
+var subjectAreaIdCodeMap map[string]string
 
 func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea) ([]db.Node, []db.Course, []db.Relation, error) {
 	catalogNumbers, err := ScrapeCourseCatalogNumbers(quarter.Code, subjectArea.Code)
@@ -82,28 +82,12 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 				return
 			}
 
-			label, err := classInfoDiv.Find("div#" + fakeClassId + "-enroll").Find("label").Html()
-			if err != nil {
-				log.Println("Unable to determine course label")
-				return
-			}
-			label = html.UnescapeString(label)
-
-			_, after, found := strings.Cut(label, n+" - ")
-			if !found {
-				log.Println("Unable to determine course name")
-				return
-			}
-
 			nodeId := db.ValueNodeId(subjectArea.Code, n)
 			nodesMutex.Lock()
 			nodes = append(nodes, db.Node{Id: nodeId, Type: db.NodeTypeValue})
 			nodesMutex.Unlock()
 
-			split := strings.Split(after, " ")
-			name := strings.Join(split[:len(split)-2], " ")
-
-			course := db.Course{SubjectAreaCode: subjectArea.Code, CatalogNumber: n, Name: name, NodeId: nodeId}
+			course := db.Course{SubjectAreaCode: subjectArea.Code, CatalogNumber: n, NodeId: nodeId}
 			coursesMutex.Lock()
 			courses = append(courses, course)
 			coursesMutex.Unlock()
@@ -121,7 +105,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 				return
 			}
 
-			tooltipNodes, tooltipCourses, tooltipRelations, err := requisiteExpression.EvaluateFor(course)
+			tooltipNodes, tooltipCourses, tooltipRelations, err := requisiteExpression.EvaluateForCourse(course)
 			if err != nil {
 				log.Println("Unable to parse requisite expression")
 				return
@@ -159,8 +143,10 @@ func main() {
 	}
 
 	subjectAreaNameCodeMap = make(map[string]string)
+	subjectAreaIdCodeMap = make(map[string]string)
 	for _, subjectArea := range subjectAreas {
 		subjectAreaNameCodeMap[subjectArea.Name] = subjectArea.Code
+		subjectAreaIdCodeMap[strings.ReplaceAll(subjectArea.Code, " ", "")] = subjectArea.Code
 	}
 
 	nodes, courses, relations, err := ScrapeNodesCoursesRelations(db.Quarter{Code: "24W", Name: "Winter 2024"}, db.SubjectArea{Code: "EC ENGR", Name: "Electrical and Computer Engineering"})
@@ -189,8 +175,10 @@ func foo() {
 	}
 
 	subjectAreaNameCodeMap = make(map[string]string)
+	subjectAreaIdCodeMap = make(map[string]string)
 	for _, subjectArea := range subjectAreas {
 		subjectAreaNameCodeMap[subjectArea.Name] = subjectArea.Code
+		subjectAreaIdCodeMap[strings.ReplaceAll(subjectArea.Code, " ", "")] = subjectArea.Code
 	}
 
 	for _, quarter := range quarters {

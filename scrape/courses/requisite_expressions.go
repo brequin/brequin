@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -23,6 +24,7 @@ const (
 	TokenRParen
 	TokenAnd
 	TokenOr
+	TokenEnd
 )
 
 type Token struct {
@@ -38,11 +40,12 @@ const (
 	LexerRequisiteFlags
 )
 
-func (requisiteExpression RequisiteExpression) Tokenize() []Token {
+func (requisiteExpression RequisiteExpression) Tokenize() *[]Token {
 	initialPos := 0
 	state := LexerStart
 
 	var tokens []Token
+
 	for pos, char := range requisiteExpression.string {
 		switch state {
 		case LexerStart:
@@ -74,16 +77,176 @@ func (requisiteExpression RequisiteExpression) Tokenize() []Token {
 			}
 		}
 	}
-
-	return tokens
+	tokens = append(tokens, Token{Type: TokenEnd, Value: "$"})
+	return &tokens
 }
 
-func (requisiteExpression RequisiteExpression) EvaluateFor(course db.Course) ([]db.Node, []db.Course, []db.Relation, error) {
-	tokens := requisiteExpression.Tokenize()
-	for _, token := range tokens {
-		fmt.Print(`"` + token.Value + `" `)
+func Eat(tokens *[]Token, tokenType TokenType) (string, error) {
+	if len(*tokens) < 1 {
+		return "", errors.New("No token to eat")
 	}
-	fmt.Println()
+	if (*tokens)[0].Type != tokenType {
+		return "", errors.New("Invalid token")
+	}
+
+	token := (*tokens)[0]
+	*tokens = (*tokens)[1:]
+	return token.Value, nil
+}
+
+func Start(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+
+	Expression(tokens)
+	Eat(tokens, TokenEnd)
+
+	return id, nodes, courses, relations, nil
+}
+
+func Expression(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+
+	Term(tokens)
+	Terms(tokens)
+
+	return id, nodes, courses, relations, nil
+}
+
+func Term(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+	/*
+		factorId, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		factorsId, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		id = factorId + factorsId
+		termNode := db.Node{Id: id, Type: db.NodeTypeAnd}
+		nodes = append(nodes, factorNodes...)
+		nodes = append(nodes, factorsNodes...)
+
+		for _, node := range nodes {
+		}
+
+		nodes = append(nodes, termNode)
+	*/
+	return id, nodes, courses, relations, nil
+}
+
+func Terms(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+
+	if (*tokens)[0].Type == TokenOr {
+		Eat(tokens, TokenOr)
+		Term(tokens)
+		Terms(tokens)
+	}
+
+	return id, nodes, courses, relations, nil
+}
+
+func Factor(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+
+	switch (*tokens)[0].Type {
+	case TokenRequisite:
+		requisiteIdFlags, err := Eat(tokens, TokenRequisite)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		nodeId, flags, found := strings.Cut(requisiteIdFlags, "{")
+		if !found {
+			return "", nil, nil, nil, errors.New("Unable to determine requisite node id and flags")
+		}
+
+		id = nodeId
+		nodes = append(nodes, db.Node{Id: nodeId, Type: db.NodeTypeValue})
+
+		if db.Unflag(flags[0]) { // Requisite is a course
+			subjectAreaPart, catalogNumber, found := strings.Cut(nodeId, "#")
+			if !found {
+				return "", nil, nil, nil, errors.New("Unable to determine requisite subject area and course catalog number")
+			}
+			course := db.Course{SubjectAreaCode: subjectAreaIdCodeMap[subjectAreaPart], CatalogNumber: catalogNumber, NodeId: nodeId}
+			courses = append(courses, course)
+		}
+	case TokenLParen:
+		Eat(tokens, TokenLParen)
+
+		expressionId, expressionNodes, expressionCourses, expressionRelations, err := Expression(tokens)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		id = "(" + expressionId + ")" // Parentheses necessary for conjunction in term
+		nodes = append(nodes, expressionNodes...)
+		courses = append(courses, expressionCourses...)
+		relations = append(relations, expressionRelations...)
+
+		_, err = Eat(tokens, TokenRParen)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+	}
+
+	return id, nodes, courses, relations, nil
+}
+
+func Factors(tokens *[]Token) (string, []db.Node, []db.Course, []db.Relation, error) {
+	var id string
+	var nodes []db.Node
+	var courses []db.Course
+	var relations []db.Relation
+
+	if (*tokens)[0].Type == TokenAnd {
+		Eat(tokens, TokenAnd)
+
+		factorId, factorNodes, factorCourses, factorRelations, err := Factor(tokens)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		factorsId, factorsNodes, factorsCourses, factorsRelations, err := Factors(tokens)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		id = "&" + factorId + factorsId
+		nodes = append(nodes, factorNodes...)
+		nodes = append(nodes, factorsNodes...)
+		courses = append(courses, factorCourses...)
+		courses = append(courses, factorsCourses...)
+		relations = append(relations, factorRelations...)
+		relations = append(relations, factorsRelations...)
+	}
+
+	return id, nodes, courses, relations, nil
+}
+
+func (requisiteExpression RequisiteExpression) EvaluateForCourse(course db.Course) ([]db.Node, []db.Course, []db.Relation, error) {
+	tokens := requisiteExpression.Tokenize()
+	Start(tokens)
 
 	var nodes []db.Node
 	var courses []db.Course
@@ -144,11 +307,10 @@ func ScrapeRequisiteExpression(classDetailTooltipUrl string) (RequisiteExpressio
 			return RequisiteExpression{""}, err
 		}
 
-		enforced := db.Flag(goquery.NewDocumentFromNode(requisiteDataNodes[4]).Find("div.icon-exclamation-sign").Length() == 1)
-		prereq := db.Flag(prereqText == "Yes")
-		coreq := db.Flag(coreqText == "Yes")
-
-		requisiteFlags := fmt.Sprintf("{%c%c%c%v}", enforced, prereq, coreq, minimumGrade)
+		isCourse := db.Flag(false)
+		isEnforced := db.Flag(goquery.NewDocumentFromNode(requisiteDataNodes[4]).Find("div.icon-exclamation-sign").Length() == 1)
+		isPrereq := db.Flag(prereqText == "Yes")
+		isCoreq := db.Flag(coreqText == "Yes")
 
 		beforeAnd, foundAnd := strings.CutSuffix(expPart, " and")
 		if foundAnd {
@@ -167,9 +329,12 @@ func ScrapeRequisiteExpression(classDetailTooltipUrl string) (RequisiteExpressio
 		subjectAreaName := strings.Trim(strings.TrimSuffix(requisiteId, catalogNumber), " ")
 		subjectAreaCode, okay := subjectAreaNameCodeMap[subjectAreaName]
 		if okay {
+			isCourse = db.Flag(true)
 			requisiteId = db.ValueNodeId(subjectAreaCode, catalogNumber)
 			expPart = strings.Replace(expPart, subjectAreaName+" "+catalogNumber, requisiteId, 1)
 		}
+
+		requisiteFlags := fmt.Sprintf("{%c%c%c%c%v}", isCourse, isEnforced, isPrereq, isCoreq, minimumGrade)
 
 		expPart = strings.ReplaceAll(expPart, requisiteId, requisiteId+requisiteFlags)
 		expPart = strings.ReplaceAll(expPart, " ", "")

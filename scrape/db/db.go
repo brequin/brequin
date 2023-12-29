@@ -15,6 +15,10 @@ func Flag(b bool) byte {
 	return strconv.FormatBool(b)[0]
 }
 
+func Unflag(b byte) bool {
+	return b == strconv.FormatBool(true)[0]
+}
+
 func ValueNodeId(subjectAreaCode, catalogNumber string) string {
 	const idTemplate = "%v#%v"
 	return fmt.Sprintf(idTemplate, subjectAreaCode, catalogNumber)

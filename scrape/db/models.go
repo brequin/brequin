@@ -26,13 +26,13 @@ type Node struct {
 type Course struct {
 	SubjectAreaCode string
 	CatalogNumber   string
-	Name            string
 	NodeId          string
 }
 
-type CourseDescription struct {
+type CourseDetails struct {
 	SubjectAreaCode string
 	CatalogNumber   string
+	Name            string
 	Description     string
 }
 

@@ -29,14 +29,14 @@ CREATE TABLE nodes (
 CREATE TABLE courses (
   subject_area_code text REFERENCES subject_areas(code),
   catalog_number text,
-  name text NOT NULL,
   node_id text UNIQUE NOT NULL REFERENCES nodes(id),
   PRIMARY KEY (subject_area_code, catalog_number)
 );
 
-CREATE TABLE course_descriptions (
+CREATE TABLE course_details (
   subject_area_code text REFERENCES subject_areas(code),
   catalog_number text,
+  name text NOT NULL,
   description text NOT NULL,
   PRIMARY KEY (subject_area_code, catalog_number)
 );
