@@ -33,8 +33,8 @@ CREATE TABLE courses (
   PRIMARY KEY (subject_area_code, catalog_number)
 );
 
-CREATE TABLE course_details (
-  subject_area_code text REFERENCES subject_areas(code),
+CREATE TABLE courses_details (
+  subject_area_code text,
   catalog_number text,
   name text NOT NULL,
   units text NOT NULL,
@@ -44,13 +44,13 @@ CREATE TABLE course_details (
 );
 
 CREATE TABLE relations (
-  source_id text NOT NULL REFERENCES nodes(id),
-  target_id text NOT NULL REFERENCES nodes(id),
-  enforced boolean,
-  prereq boolean,
-  coreq boolean,
+  source_id text REFERENCES nodes(id),
+  target_id text REFERENCES nodes(id),
+  enforced text,
+  prereq text,
+  coreq text,
   minimum_grade text,
-  PRIMARY KEY (source_id, target_id)
+  PRIMARY KEY (source_id, target_id, enforced, prereq, coreq, minimum_grade)
 );
 
 CREATE FUNCTION quarter_rank(code text) RETURNS text AS $$

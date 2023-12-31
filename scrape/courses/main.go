@@ -49,11 +49,7 @@ func ScrapeNodesCoursesRelations(quarter db.Quarter, subjectArea db.SubjectArea)
 				return
 			}
 
-			formattedCatalogNumber, err := FormatCatalogNumber(n)
-			if err != nil {
-				log.Printf("Unable to format course catalog number: %v\n", n)
-				return
-			}
+			formattedCatalogNumber := FormatCatalogNumber(n)
 			model := fmt.Sprintf(modelTemplate, quarter.Code, subjectArea.Code, formattedCatalogNumber)
 
 			query := request.URL.Query()
@@ -137,33 +133,6 @@ func main() {
 	defer pool.Close()
 	database := db.Database{Pool: pool}
 
-	subjectAreas, err := database.ListSubjectAreas()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	subjectAreaNameCodeMap = make(map[string]string)
-	subjectAreaIdCodeMap = make(map[string]string)
-	for _, subjectArea := range subjectAreas {
-		subjectAreaNameCodeMap[subjectArea.Name] = subjectArea.Code
-		subjectAreaIdCodeMap[strings.ReplaceAll(subjectArea.Code, " ", "")] = subjectArea.Code
-	}
-
-	nodes, courses, relations, err := ScrapeNodesCoursesRelations(db.Quarter{Code: "24W", Name: "Winter 2024"}, db.SubjectArea{Code: "EC ENGR", Name: "Electrical and Computer Engineering"})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Print(len(nodes), len(courses), len(relations))
-}
-
-func foo() {
-	pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_CONNECTION_STRING"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer pool.Close()
-	database := db.Database{Pool: pool}
-
 	quarters, err := database.ListQuarters()
 	if err != nil {
 		log.Fatal(err)
@@ -199,20 +168,21 @@ func foo() {
 					log.Println(err)
 					return
 				}
-				fmt.Print(len(nodes), len(courses), len(relations))
-				/*
-					if err := database.InsertNodes(nodes); err != nil {
-						log.Fatal(err)
-					}
 
-					if err := database.InsertCourses(courses); err != nil {
-						log.Fatal(err)
-					}
+				msg := fmt.Sprintf("%v %v: Scraped %v nodes, %v courses, %v relations", quarter.Code, s.Code, len(nodes), len(courses), len(relations))
+				log.Println(msg)
 
-					if err := database.InsertRelations(relations); err != nil {
-						log.Fatal(err)
-					}
-				*/
+				if err := database.InsertNodes(nodes); err != nil {
+					log.Fatal(err)
+				}
+
+				if err := database.InsertCourses(courses); err != nil {
+					log.Fatal(err)
+				}
+
+				if err := database.InsertRelations(relations); err != nil {
+					log.Fatal(err)
+				}
 			}(subjectArea)
 		}
 		wg.Wait()

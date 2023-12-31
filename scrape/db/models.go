@@ -10,12 +10,12 @@ type SubjectArea struct {
 	Name string
 }
 
-type NodeType int
+type NodeType string
 
 const (
-	NodeTypeValue NodeType = iota
-	NodeTypeAnd
-	NodeTypeOr
+	NodeTypeValue NodeType = "value"
+	NodeTypeAnd   NodeType = "and"
+	NodeTypeOr    NodeType = "or"
 )
 
 type Node struct {

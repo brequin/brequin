@@ -133,14 +133,17 @@ func ScrapeCourseCatalogNumbers(quarterCode string, subjectAreaCode string) ([]s
 	return courseCatalogNumbers, nil
 }
 
-func FormatCatalogNumber(catalogNumber string) (string, error) {
+func FormatCatalogNumber(catalogNumber string) string {
 	re := regexp.MustCompile(`([[:upper:]]*)([[:digit:]]*)([[:upper:]]*)`)
 	submatches := re.FindStringSubmatch(catalogNumber)
 	prefix := submatches[1]
 	suffix := submatches[3]
 	number, err := strconv.Atoi(submatches[2])
 	if err != nil {
-		return "", err
+		log.Println("Unable to determine course catalog number digits; assuming 0")
+		number = 0
+		suffix = prefix
+		prefix = ""
 	}
-	return fmt.Sprintf("%04d%-2s%-2s", number, suffix, prefix), nil
+	return fmt.Sprintf("%04d%-2s%-2s", number, suffix, prefix)
 }

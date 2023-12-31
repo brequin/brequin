@@ -1,16 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/brequin/brequin/scrape/db"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const subjectAreasUrl = "https://api.ucla.edu/sis/publicapis/course/getallcourses"
@@ -47,7 +50,7 @@ func ScrapeCurrentSubjectAreas() ([]SubjectAreaEntry, error) {
 	return subjectAreaEntries, nil
 }
 
-func ScrapeCourseDetails(subjectAreaCode string) ([]db.CourseDetails, error) {
+func ScrapeCoursesDetails(subjectAreaCode string) ([]db.CourseDetails, error) {
 	request, err := http.NewRequest("GET", courseDetailsUrl, nil)
 	if err != nil {
 		return nil, err
@@ -83,12 +86,12 @@ func ScrapeCourseDetails(subjectAreaCode string) ([]db.CourseDetails, error) {
 		level := strings.TrimSuffix(courseEntry.Level, " Courses")
 
 		courseDetails := db.CourseDetails{
-			SubjectAreaCode: subjectAreaCode,
-			CatalogNumber:   catalogNumber,
-			Name:            name,
-			Units:           courseEntry.Units,
-			Level:           level,
-			Description:     courseEntry.Description,
+			SubjectAreaCode: strings.TrimSpace(subjectAreaCode),
+			CatalogNumber:   strings.TrimSpace(catalogNumber),
+			Name:            strings.TrimSpace(name),
+			Units:           strings.TrimSpace(courseEntry.Units),
+			Level:           strings.TrimSpace(level),
+			Description:     strings.TrimSpace(courseEntry.Description),
 		}
 		coursesDetails = append(coursesDetails, courseDetails)
 	}
@@ -97,14 +100,12 @@ func ScrapeCourseDetails(subjectAreaCode string) ([]db.CourseDetails, error) {
 }
 
 func main() {
-	/*
-		pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_CONNECTION_STRING"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer pool.Close()
-		database := db.Database{Pool: pool}
-	*/
+	pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_CONNECTION_STRING"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer pool.Close()
+	database := db.Database{Pool: pool}
 
 	subjectAreaEntries, err := ScrapeCurrentSubjectAreas()
 	if err != nil {
@@ -118,13 +119,18 @@ func main() {
 		go func(s SubjectAreaEntry) {
 			defer wg.Done()
 
-			courseDetails, err := ScrapeCourseDetails(s.Code)
+			coursesDetails, err := ScrapeCoursesDetails(s.Code)
 			if err != nil {
 				log.Println("Unable to get course details for subject area: " + s.Code)
 				return
 			}
 
-			fmt.Println(s.Code, len(courseDetails))
+			msg := fmt.Sprintf("%v: Scraped details for %v courses", s.Code, len(coursesDetails))
+			log.Println(msg)
+
+			if err := database.InsertCoursesDetails(coursesDetails); err != nil {
+				log.Fatal(err)
+			}
 		}(subjectAreaEntry)
 	}
 	wg.Wait()
